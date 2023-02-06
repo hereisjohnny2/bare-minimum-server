@@ -40,10 +40,18 @@ class LocalFileDatabase {
 
 const database = new LocalFileDatabase()
 
+function buildRoutePath(path) {
+    const routeParametersRegex = /:([a-zA-Z]+)/g
+    const pathWithParams = path.replaceAll(routeParametersRegex, "(?<$1>[a-z0-9\-_]+)")
+    const pathRegex = new RegExp(`^${pathWithParams}`)
+
+    return pathRegex
+}
+
 const routes = [
     {
         method: "GET",
-        url: "/tasks",
+        url: buildRoutePath("/tasks"),
         handler: (_, res) => {
             const data = database.select("tasks")
             return res.end(JSON.stringify(data))
@@ -51,7 +59,7 @@ const routes = [
     },
     {
         method: "POST",
-        url: "/tasks",
+        url: buildRoutePath("/tasks"),
         handler: (req, res) => {
             const { description } = req.body
 
@@ -63,6 +71,13 @@ const routes = [
             database.insert("tasks", data)
 
             return res.writeHead(201).end()
+        }
+    },
+    {
+        method: "DELETE",
+        url: buildRoutePath("/tasks/:id"),
+        handler: (req, res) => {
+            return res.end()
         }
     }
 ]
@@ -88,8 +103,10 @@ const server = http.createServer(async (req, res) => {
 
     await json(req, res)
 
-    const route = routes.find(route => route.method == method && route.url == url)
-    if (route?.handler) {
+    const route = routes.find(route => route.method == method && route.url.test(url))
+    if (route) {
+        const routeParam = req.url.match(route.url)
+        console.log(routeParam)
         return route.handler(req, res)
     }
 
