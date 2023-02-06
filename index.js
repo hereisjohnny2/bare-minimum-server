@@ -1,6 +1,7 @@
 import http from "node:http"
 import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
+import { warn } from "node:console"
 
 const databasePath = new URL("db.json", import.meta.url)
 
@@ -35,6 +36,17 @@ class LocalFileDatabase {
         this.#persist()
 
         return data
+    }
+
+    delete(table, id) {
+        const rowIndex = this.#database[table]?.findIndex(row => row.id === id)
+
+        if (!rowIndex || rowIndex < 0) return false
+
+        this.#database[table].splice(rowIndex, 1)
+        this.#persist()
+
+        return true
     }
 }
 
@@ -77,7 +89,15 @@ const routes = [
         method: "DELETE",
         url: buildRoutePath("/tasks/:id"),
         handler: (req, res) => {
-            return res.end()
+            const { id } = req.params
+
+            const hasDeleted = database.delete("tasks", id)
+
+            if (!hasDeleted) {
+                return res.writeHead(404).end(JSON.stringify({ message: "id not found" }))
+            }
+
+            return res.writeHead(204).end()
         }
     }
 ]
@@ -106,7 +126,10 @@ const server = http.createServer(async (req, res) => {
     const route = routes.find(route => route.method == method && route.url.test(url))
     if (route) {
         const routeParam = req.url.match(route.url)
-        console.log(routeParam)
+        const params = { ...routeParam.groups }
+
+        req.params = params
+
         return route.handler(req, res)
     }
 
