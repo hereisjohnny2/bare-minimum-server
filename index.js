@@ -38,10 +38,21 @@ class LocalFileDatabase {
         return data
     }
 
+    update(table, id, data) {
+        const rowIndex = this.#database[table]?.findIndex(row => row.id === id)
+
+        if (rowIndex == undefined || rowIndex < 0) return false
+
+        this.#database[table][rowIndex] = { id, ...data }
+        this.#persist()
+
+        return true
+    }
+
     delete(table, id) {
         const rowIndex = this.#database[table]?.findIndex(row => row.id === id)
 
-        if (!rowIndex || rowIndex < 0) return false
+        if (rowIndex == undefined || rowIndex < 0) return false
 
         this.#database[table].splice(rowIndex, 1)
         this.#persist()
@@ -83,6 +94,23 @@ const routes = [
             database.insert("tasks", data)
 
             return res.writeHead(201).end()
+        }
+    },
+    {
+        method: "PUT",
+        url: buildRoutePath("/tasks/:id"),
+        handler: (req, res) => {
+            const { id } = req.params
+            const { description } = req.body
+
+            const data = { description }
+            const hasUpdated = database.update("tasks", id, data)
+
+            if (!hasUpdated) {
+                return res.writeHead(404).end(JSON.stringify({ message: "id not found" }))
+            }
+
+            return res.writeHead(204).end()
         }
     },
     {
