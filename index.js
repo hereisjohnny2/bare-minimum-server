@@ -20,8 +20,16 @@ class LocalFileDatabase {
         fs.writeFile(databasePath, JSON.stringify(this.#database))
     }
 
-    select(table) {
+    select(table, search) {
         const data = this.#database[table] ?? []
+
+        if (search) {
+            return data.filter(row => {
+                return Object.entries(search).some(([key, value]) => {
+                    return row[key].includes(value)
+                })
+            })
+        }
 
         return data
     }
@@ -66,17 +74,30 @@ const database = new LocalFileDatabase()
 function buildRoutePath(path) {
     const routeParametersRegex = /:([a-zA-Z]+)/g
     const pathWithParams = path.replaceAll(routeParametersRegex, "(?<$1>[a-z0-9\-_]+)")
-    const pathRegex = new RegExp(`^${pathWithParams}`)
+
+    const pathRegex = new RegExp(`^${pathWithParams}(?<query>\\?(.*))?$`)
 
     return pathRegex
+}
+
+function extractQueryParams(query) {
+    return query.substr(1).split("&").reduce((queryParams, param) => {
+        const [key, value] = param.split("=")
+        queryParams[key] = value
+
+        return queryParams
+    }, {})
 }
 
 const routes = [
     {
         method: "GET",
         url: buildRoutePath("/tasks"),
-        handler: (_, res) => {
-            const data = database.select("tasks")
+        handler: (req, res) => {
+            const { search } = req.query
+            const data = database.select("tasks", {
+                description: search
+            })
             return res.end(JSON.stringify(data))
         }
     },
@@ -154,9 +175,10 @@ const server = http.createServer(async (req, res) => {
     const route = routes.find(route => route.method == method && route.url.test(url))
     if (route) {
         const routeParam = req.url.match(route.url)
-        const params = { ...routeParam.groups }
+        const { query, ...params } = routeParam.groups
 
         req.params = params
+        req.query = query ? extractQueryParams(query) : {}
 
         return route.handler(req, res)
     }
