@@ -1,7 +1,6 @@
 import http from "node:http"
 import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
-import { warn } from "node:console"
 
 const databasePath = new URL("db.json", import.meta.url)
 
@@ -46,12 +45,13 @@ class LocalFileDatabase {
         return data
     }
 
-    update(table, id, data) {
+    update(table, id, updatedData) {
         const rowIndex = this.#database[table]?.findIndex(row => row.id === id)
 
         if (rowIndex == undefined || rowIndex < 0) return false
 
-        this.#database[table][rowIndex] = { id, ...data }
+        const data = this.#database[table][rowIndex]
+        this.#database[table][rowIndex] = { ...data, ...updatedData }
         this.#persist()
 
         return true
@@ -95,9 +95,12 @@ const routes = [
         url: buildRoutePath("/tasks"),
         handler: (req, res) => {
             const { search } = req.query
-            const data = database.select("tasks", {
-                description: search
-            })
+
+            const data = database.select("tasks", search ? {
+                description: search,
+                title: search
+            } : null)
+
             return res.end(JSON.stringify(data))
         }
     },
@@ -105,11 +108,15 @@ const routes = [
         method: "POST",
         url: buildRoutePath("/tasks"),
         handler: (req, res) => {
-            const { description } = req.body
+            const { description, title } = req.body
 
             const data = {
                 id: randomUUID(),
-                description
+                description,
+                title,
+                created_at: new Date(),
+                updated_at: new Date(),
+                completed_at: null
             }
 
             database.insert("tasks", data)
@@ -118,13 +125,42 @@ const routes = [
         }
     },
     {
+        method: "PATCH",
+        url: buildRoutePath("/tasks/:id/complete"),
+        handler: (req, res) => {
+            const { id } = req.params
+
+            const task = database.select("tasks", { id })
+            if (task.length < 1) {
+                return res.writeHead(404).end(JSON.stringify({ message: "id not found" }))
+            }
+
+            const data = {
+                completed_at: task[0].completed_at ? null : new Date(),
+                updated_at: new Date()
+            }
+
+            const hasUpdated = database.update("tasks", id, data)
+
+            if (!hasUpdated) {
+                return res.writeHead(404).end(JSON.stringify({ message: "id not found" }))
+            }
+
+            return res.writeHead(204).end()
+        }
+    },
+    {
         method: "PUT",
         url: buildRoutePath("/tasks/:id"),
         handler: (req, res) => {
             const { id } = req.params
-            const { description } = req.body
+            const { description, title } = req.body
 
-            const data = { description }
+            const data = {
+                ...(description && { description }), 
+                ...(title && { title }), 
+                updated_at: new Date()
+            }
             const hasUpdated = database.update("tasks", id, data)
 
             if (!hasUpdated) {
